@@ -1266,7 +1266,7 @@ class _ControllerPageState extends State<ControllerPage> {
                 Divider(color: Colors.white24, height: 20),
                 Text("Developer", style: TextStyle(color: accentColor, fontWeight: FontWeight.bold)),
                 SizedBox(height: 4),
-                Text("Nama: Apri Ansyah"),
+                Text("Nama: M.ADY AFRIANSYAH"),
                 Text("Telegram Dev: t.me/bujanginm"),
                 Text("Group Telegram:"),
                 Text("https://t.me/forumdiskusitele/371474"),
@@ -1326,7 +1326,7 @@ class _ControllerPageState extends State<ControllerPage> {
                 Divider(color: Colors.white24, height: 20),
                 Text("Status", style: TextStyle(color: accentColor, fontWeight: FontWeight.bold)),
                 SizedBox(height: 4),
-                Text("Aplikasi ini FREE dan TIDAK untuk diperjualbelikan."),
+                Text("Aplikasi ini FREE dan TIDAK untuk di perjual belikan."),
               ],
             ),
           ),
@@ -2004,11 +2004,11 @@ class _ControllerPageState extends State<ControllerPage> {
       ),
       child: Column(
         children: [
-          Text("Spesifikasi HP — Live",
+          Text("Traffic Data — Live",
               style: TextStyle(color: Colors.white, fontSize: 15, fontWeight: FontWeight.bold)),
           SizedBox(height: 4),
-          Text("Diambil langsung dari sensor & sistem HP kamu, bukan simulasi",
-              style: TextStyle(color: Colors.white38, fontSize: 10)),
+          Text("Diambil langsung dari sensor & sistem HP penguna",
+              style: TextStyle(color: Colors.white38, fontSize: 12)),
           SizedBox(height: 8),
           SizedBox(
             height: 230,
