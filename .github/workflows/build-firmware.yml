@@ -30,6 +30,7 @@ jobs:
           arduino-cli config set library.enable_unsafe_install true
           arduino-cli lib install "PubSubClient"
           arduino-cli lib install "ArduinoJson"
+          arduino-cli lib install "NimBLE-Arduino"
           arduino-cli lib install --git-url https://github.com/adafruit/Adafruit_NeoPixel.git
 
       - name: Compile firmware untuk ESP32-C3
