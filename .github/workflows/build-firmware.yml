@@ -1,0 +1,56 @@
+name: Build ESP32-C3 Firmware
+
+on:
+  push:
+    paths:
+      - 'firmware/**'
+      - '.github/workflows/build-firmware.yml'
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install arduino-cli
+        run: |
+          curl -fsSL https://raw.githubusercontent.com/arduino/arduino-cli/master/install.sh | sh
+          echo "$PWD/bin" >> "$GITHUB_PATH"
+
+      - name: Setup arduino-cli + ESP32 core
+        run: |
+          arduino-cli config init
+          arduino-cli config add board_manager.additional_urls https://raw.githubusercontent.com/espressif/arduino-esp32/gh-pages/package_esp32_index.json
+          arduino-cli core update-index
+          arduino-cli core install esp32:esp32
+
+      - name: Install library dependencies
+        run: |
+          arduino-cli config set library.enable_unsafe_install true
+          arduino-cli lib install "PubSubClient"
+          arduino-cli lib install "ArduinoJson"
+          arduino-cli lib install --git-url https://github.com/adafruit/Adafruit_NeoPixel.git
+
+      - name: Compile firmware untuk ESP32-C3
+        run: |
+          arduino-cli compile --fqbn esp32:esp32:esp32c3 firmware/firmware.ino --output-dir build-output
+
+      - name: Install esptool (buat gabungin jadi 1 file .bin)
+        run: pip install esptool
+
+      - name: Gabungin bootloader + partitions + app jadi SATU file
+        run: |
+          cd build-output
+          esptool --chip esp32c3 merge-bin \
+            -o merged-firmware.bin \
+            --flash-mode dio --flash-freq 80m --flash-size 4MB \
+            0x0     firmware.ino.bootloader.bin \
+            0x8000  firmware.ino.partitions.bin \
+            0x10000 firmware.ino.bin
+
+      - name: Upload hasil firmware
+        uses: actions/upload-artifact@v4
+        with:
+          name: firmware-untuk-hp
+          path: build-output/merged-firmware.bin
