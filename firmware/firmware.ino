@@ -5,6 +5,9 @@
 #include <ArduinoJson.h>
 #include <NimBLEDevice.h>
 #include <Adafruit_NeoPixel.h>
+#include <esp_task_wdt.h>
+
+#define WDT_TIMEOUT_S 30
 
 const char* ap_ssid = "ESP32-Config";
 const char* ap_password = "12345678";
@@ -173,10 +176,13 @@ void handleLedAnimation() {
 }
 
 void mqttCallback(char* topic, byte* payload, unsigned int length) {
-  String msg;
-  for (unsigned int i = 0; i < length; i++) msg += (char)payload[i];
+  char msgBuf[192];
+  unsigned int len = length < sizeof(msgBuf) - 1 ? length : sizeof(msgBuf) - 1;
+  memcpy(msgBuf, payload, len);
+  msgBuf[len] = '\0';
+
   StaticJsonDocument<128> doc;
-  if (deserializeJson(doc, msg)) return;
+  if (deserializeJson(doc, msgBuf)) return;
   if (doc.containsKey("voltage")) applyVoltage(doc["voltage"]);
   if (doc.containsKey("ledMode")) applyLedMode(String((const char*)doc["ledMode"]));
   if (doc.containsKey("action") && String((const char*)doc["action"]) == "clear_cache") {
@@ -200,24 +206,20 @@ void reconnectMQTTNonBlocking() {
   }
 }
 
+char statusJsonBuf[256];
 void publishStatus() {
   unsigned long runtime = millis() - startMillis;
   long s = runtime / 1000, m = s / 60, h = m / 60;
-  String uptime = String(h) + ":" + String(m % 60) + ":" + String(s % 60);
 
-  StaticJsonDocument<256> doc;
-  doc["deviceId"] = deviceId;
-  doc["setVoltage"] = currentSetVoltage;
-  doc["ledMode"] = ledMode;
-  doc["uptime"] = uptime;
-  String jsonStr;
-  serializeJson(doc, jsonStr);
+  snprintf(statusJsonBuf, sizeof(statusJsonBuf),
+    "{\"deviceId\":\"%s\",\"setVoltage\":%.1f,\"ledMode\":\"%s\",\"uptime\":\"%ld:%02ld:%02ld\"}",
+    deviceId.c_str(), currentSetVoltage, ledMode.c_str(), h, m % 60, s % 60);
 
   if (currentMode == "wifi" && mqttClient.connected()) {
-    mqttClient.publish(status_topic.c_str(), jsonStr.c_str());
+    mqttClient.publish(status_topic.c_str(), statusJsonBuf);
   }
   if (currentMode == "ble" && deviceConnected && pCharacteristic != NULL) {
-    pCharacteristic->setValue(jsonStr.c_str());
+    pCharacteristic->setValue(statusJsonBuf);
     pCharacteristic->notify();
   }
 }
@@ -321,15 +323,37 @@ void setupHttpRoutes() {
 void startBleMode() {
   currentMode = "ble";
   NimBLEDevice::init(bleName.c_str());
+
   pServer = NimBLEDevice::createServer();
+  if (pServer == NULL) {
+
+    Serial.println("FATAL: gagal buat BLE server, restart...");
+    delay(1000);
+    ESP.restart();
+    return;
+  }
   pServer->setCallbacks(new MyServerCallbacks());
+
   NimBLEService *pService = pServer->createService(SERVICE_UUID);
+  if (pService == NULL) {
+    Serial.println("FATAL: gagal buat BLE service, restart...");
+    delay(1000);
+    ESP.restart();
+    return;
+  }
+
   pCharacteristic = pService->createCharacteristic(
     CHARACTERISTIC_UUID,
     NIMBLE_PROPERTY::READ |
     NIMBLE_PROPERTY::WRITE |
     NIMBLE_PROPERTY::NOTIFY
   );
+  if (pCharacteristic == NULL) {
+    Serial.println("FATAL: gagal buat BLE characteristic, restart...");
+    delay(1000);
+    ESP.restart();
+    return;
+  }
 
   pCharacteristic->setCallbacks(new MyCharacteristicCallbacks());
   pService->start();
@@ -347,6 +371,7 @@ void startWifiMode(String savedSSID, String savedPass) {
   int tries = 0;
   while (WiFi.status() != WL_CONNECTED && tries < 20) {
     delay(500);
+    esp_task_wdt_reset();
     Serial.print(".");
     tries++;
   }
@@ -398,9 +423,25 @@ void handleBleCommand() {
   bleCommand = "";
 }
 
+void startWatchdog() {
+
+#if ESP_ARDUINO_VERSION_MAJOR >= 3
+  esp_task_wdt_config_t wdtConfig = {
+    .timeout_ms = WDT_TIMEOUT_S * 1000,
+    .idle_core_mask = 0,
+    .trigger_panic = true
+  };
+  esp_task_wdt_init(&wdtConfig);
+#else
+  esp_task_wdt_init(WDT_TIMEOUT_S, true);
+#endif
+  esp_task_wdt_add(NULL);
+}
+
 void setup() {
   Serial.begin(115200);
   randomSeed(esp_random());
+  startWatchdog();
 
   deviceId = computeDeviceId();
   bleName = "ESP32-Cooler-" + deviceId;
@@ -431,6 +472,8 @@ void setup() {
 }
 
 void loop() {
+  esp_task_wdt_reset();
+
   if (currentMode == "ble") {
 
     handleBleCommand();
@@ -449,6 +492,8 @@ void loop() {
   if (millis() - lastPublish > 3000) {
     publishStatus();
     lastPublish = millis();
+
+    Serial.println("Free heap: " + String(ESP.getFreeHeap()) + " bytes");
   }
 
   delay(10);
